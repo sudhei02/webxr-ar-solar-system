@@ -80,9 +80,9 @@
             const planetData = [
                 { 
                     name: 'Mercury', 
-                    size: 0.1, 
+                    size: 0.3, 
                     distance: 1.0, 
-                    speed: 4.7, 
+                    speed: 0.8, 
                     color: 0x8c7853,
                     details: {
                         diameter: '4,879 km',
@@ -94,9 +94,9 @@
                 },
                 { 
                     name: 'Venus', 
-                    size: 0.15, 
+                    size: 0.35, 
                     distance: 1.4, 
-                    speed: 3.5, 
+                    speed: 0.6, 
                     color: 0xffc649,
                     details: {
                         diameter: '12,104 km',
@@ -108,9 +108,9 @@
                 },
                 { 
                     name: 'Earth', 
-                    size: 0.15, 
+                    size: 0.35, 
                     distance: 1.8, 
-                    speed: 3.0, 
+                    speed: 0.5, 
                     color: 0x6b93d6,
                     details: {
                         diameter: '12,756 km',
@@ -122,9 +122,9 @@
                 },
                 { 
                     name: 'Mars', 
-                    size: 0.12, 
+                    size: 0.28, 
                     distance: 2.3, 
-                    speed: 2.4, 
+                    speed: 0.4, 
                     color: 0xc1440e,
                     details: {
                         diameter: '6,792 km',
@@ -136,9 +136,9 @@
                 },
                 { 
                     name: 'Jupiter', 
-                    size: 0.4, 
+                    size: 0.8, 
                     distance: 3.2, 
-                    speed: 1.3, 
+                    speed: 0.25, 
                     color: 0xd8ca9d,
                     details: {
                         diameter: '142,984 km',
@@ -150,9 +150,9 @@
                 },
                 { 
                     name: 'Saturn', 
-                    size: 0.35, 
+                    size: 0.7, 
                     distance: 4.0, 
-                    speed: 0.9, 
+                    speed: 0.2, 
                     color: 0xfad5a5,
                     details: {
                         diameter: '120,536 km',
@@ -164,9 +164,9 @@
                 },
                 { 
                     name: 'Uranus', 
-                    size: 0.25, 
+                    size: 0.5, 
                     distance: 4.8, 
-                    speed: 0.7, 
+                    speed: 0.15, 
                     color: 0x4fd0e3,
                     details: {
                         diameter: '51,118 km',
@@ -178,9 +178,9 @@
                 },
                 { 
                     name: 'Neptune', 
-                    size: 0.24, 
+                    size: 0.48, 
                     distance: 5.5, 
-                    speed: 0.5, 
+                    speed: 0.1, 
                     color: 0x4b70dd,
                     details: {
                         diameter: '49,528 km',
@@ -191,6 +191,19 @@
                     }
                 }
             ];
+
+            // Sun data for details
+            const sunData = {
+                name: 'The Sun',
+                details: {
+                    diameter: '1.39 million km',
+                    distance: 'Center of Solar System',
+                    temperature: '5,778 K surface / 15 million K core',
+                    composition: '73% Hydrogen, 25% Helium',
+                    age: '4.6 billion years',
+                    facts: 'Contains 99.86% of Solar System mass, powers all life on Earth'
+                }
+            };
 
             // Camera controls state
             const cameraControls = useRef({
@@ -308,15 +321,69 @@
                 sunLight.shadow.mapSize.height = 2048;
                 scene.add(sunLight);
 
-                // Create glowing sun
-                const sunGeometry = new THREE.SphereGeometry(0.3, 32, 32);
+                // Create enhanced glowing sun
+                const sunGroup = new THREE.Group();
+                
+                // Main sun body
+                const sunGeometry = new THREE.SphereGeometry(0.5, 64, 64);
+                
+                // Create detailed sun texture
+                const sunCanvas = document.createElement('canvas');
+                sunCanvas.width = 1024;
+                sunCanvas.height = 1024;
+                const sunCtx = sunCanvas.getContext('2d');
+                
+                // Base sun gradient
+                const sunGradient = sunCtx.createRadialGradient(512, 512, 0, 512, 512, 512);
+                sunGradient.addColorStop(0, '#ffff88');
+                sunGradient.addColorStop(0.3, '#ffaa00');
+                sunGradient.addColorStop(0.7, '#ff6600');
+                sunGradient.addColorStop(1, '#cc3300');
+                
+                sunCtx.fillStyle = sunGradient;
+                sunCtx.fillRect(0, 0, 1024, 1024);
+                
+                // Add solar flares and surface activity
+                for (let i = 0; i < 100; i++) {
+                    const x = Math.random() * 1024;
+                    const y = Math.random() * 1024;
+                    const size = Math.random() * 50 + 10;
+                    
+                    const flareGradient = sunCtx.createRadialGradient(x, y, 0, x, y, size);
+                    flareGradient.addColorStop(0, 'rgba(255,255,255,0.8)');
+                    flareGradient.addColorStop(0.5, 'rgba(255,200,0,0.4)');
+                    flareGradient.addColorStop(1, 'rgba(255,100,0,0.1)');
+                    
+                    sunCtx.fillStyle = flareGradient;
+                    sunCtx.beginPath();
+                    sunCtx.arc(x, y, size, 0, Math.PI * 2);
+                    sunCtx.fill();
+                }
+                
+                const sunTexture = new THREE.CanvasTexture(sunCanvas);
                 const sunMaterial = new THREE.MeshStandardMaterial({ 
-                    color: 0xffff00,
+                    map: sunTexture,
                     emissive: 0xffaa00,
-                    emissiveIntensity: 0.6
+                    emissiveIntensity: 0.7,
+                    emissiveMap: sunTexture
                 });
+                
                 const sun = new THREE.Mesh(sunGeometry, sunMaterial);
-                scene.add(sun);
+                
+                // Add sun corona (outer glow)
+                const coronaGeometry = new THREE.SphereGeometry(0.65, 32, 32);
+                const coronaMaterial = new THREE.MeshBasicMaterial({
+                    color: 0xffaa00,
+                    transparent: true,
+                    opacity: 0.3,
+                    side: THREE.BackSide
+                });
+                const corona = new THREE.Mesh(coronaGeometry, coronaMaterial);
+                
+                sun.userData = sunData;
+                sunGroup.add(sun);
+                sunGroup.add(corona);
+                scene.add(sunGroup);
 
                 // Create planets with enhanced materials
                 const planets = [];
@@ -388,8 +455,17 @@
                     };
                     
                     raycaster.setFromCamera(mouse, camera);
-                    const intersects = raycaster.intersectObjects(planets);
                     
+                    // Check for sun click first
+                    const sunIntersects = raycaster.intersectObjects([sun]);
+                    if (sunIntersects.length > 0) {
+                        setSelectedPlanet(sunData);
+                        setPlanetInfoPos({ x: event.clientX, y: event.clientY });
+                        return;
+                    }
+                    
+                    // Then check planets
+                    const intersects = raycaster.intersectObjects(planets);
                     if (intersects.length > 0) {
                         const planet = intersects[0].object;
                         setSelectedPlanet(planet.userData);
@@ -434,19 +510,24 @@
                     }
                     
                     // Animate sun
-                    if (sun) {
-                        sun.rotation.y += deltaTime * 0.5;
+                    if (sunGroup) {
+                        sunGroup.rotation.y += deltaTime * 0.2;
+                        // Add subtle corona pulsing
+                        const corona = sunGroup.children[1];
+                        if (corona) {
+                            corona.material.opacity = 0.3 + Math.sin(clock.getElapsedTime() * 2) * 0.1;
+                        }
                     }
                     
-                    // Animate planets
+                    // Animate planets (much slower)
                     planets.forEach(planet => {
-                        planet.userData.angle += deltaTime * planet.userData.speed * 0.05;
+                        planet.userData.angle += deltaTime * planet.userData.speed * 0.01; // Much slower
                         const distance = planet.userData.distance;
                         const angle = planet.userData.angle;
                         
-                        planet.position.x = sun.position.x + Math.cos(angle) * distance;
-                        planet.position.z = sun.position.z + Math.sin(angle) * distance;
-                        planet.rotation.y += deltaTime * 1;
+                        planet.position.x = Math.cos(angle) * distance;
+                        planet.position.z = Math.sin(angle) * distance;
+                        planet.rotation.y += deltaTime * 0.3; // Slower planet rotation
                     });
                     
                     renderer.render(scene, camera);
@@ -459,7 +540,7 @@
                 rendererRef.current = renderer;
                 cameraRef.current = camera;
                 planetsRef.current = planets;
-                sunRef.current = sun;
+                sunRef.current = sunGroup;
                 clockRef.current = clock;
                 raycasterRef.current = raycaster;
 
@@ -501,34 +582,41 @@
                 }
 
                 try {
+                    // Simplify AR session request to avoid freezing
+                    const session = await navigator.xr.requestSession('immersive-ar');
+
+                    // Position solar system for AR (smaller scale)
                     if (sunRef.current) {
-                        sunRef.current.position.set(0, 1.5, -3);
+                        sunRef.current.position.set(0, 1.0, -2);
+                        sunRef.current.scale.setScalar(0.3); // Scale down for AR
+                        
                         planetsRef.current.forEach(planet => {
                             const angle = planet.userData.angle;
-                            const distance = planet.userData.distance * 0.5;
-                            planet.position.x = sunRef.current.position.x + Math.cos(angle) * distance;
-                            planet.position.y = 1.5;
-                            planet.position.z = sunRef.current.position.z + Math.sin(angle) * distance;
+                            const distance = planet.userData.distance * 0.3; // Much closer in AR
+                            planet.position.x = Math.cos(angle) * distance;
+                            planet.position.y = 1.0;
+                            planet.position.z = -2 + Math.sin(angle) * distance;
+                            planet.scale.setScalar(0.3); // Scale down planets too
                         });
                     }
-
-                    const session = await navigator.xr.requestSession('immersive-ar', {
-                        requiredFeatures: ['local', 'hit-test']
-                    });
 
                     await rendererRef.current.xr.setSession(session);
                     setXrSession(session);
                     setArActive(true);
 
                     session.addEventListener('end', () => {
+                        // Reset to normal mode
                         if (sunRef.current) {
                             sunRef.current.position.set(0, 0, 0);
+                            sunRef.current.scale.setScalar(1);
+                            
                             planetsRef.current.forEach(planet => {
                                 const angle = planet.userData.angle;
                                 const distance = planet.userData.distance;
                                 planet.position.x = Math.cos(angle) * distance;
                                 planet.position.y = 0;
                                 planet.position.z = Math.sin(angle) * distance;
+                                planet.scale.setScalar(1);
                             });
                         }
 
@@ -537,6 +625,7 @@
                     });
 
                 } catch (error) {
+                    console.error('AR Error:', error);
                     showARRequirements();
                 }
             };
