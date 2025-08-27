@@ -284,14 +284,19 @@
 
                 const scene = new THREE.Scene();
                 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-                const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+                const renderer = new THREE.WebGLRenderer({ 
+                    antialias: true, 
+                    alpha: true,
+                    preserveDrawingBuffer: true 
+                });
                 const raycaster = new THREE.Raycaster();
                 
                 renderer.setSize(window.innerWidth, window.innerHeight);
-                renderer.setClearColor(0x000011);
+                renderer.setClearColor(0x000011, 1); // Non-AR background
                 renderer.xr.enabled = true;
                 renderer.shadowMap.enabled = true;
                 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+                renderer.autoClear = false; // Important for AR
                 mountRef.current.appendChild(renderer.domElement);
 
                 // Add starfield
@@ -500,8 +505,17 @@
                     const deltaTime = clock.getDelta();
                     const controls = cameraControls.current;
                     
-                    // Update camera position based on controls
-                    if (!arActive) {
+                    // Handle AR vs normal rendering
+                    if (arActive) {
+                        // Clear for AR passthrough
+                        renderer.setClearColor(0x000000, 0);
+                        renderer.clear();
+                    } else {
+                        // Normal space background
+                        renderer.setClearColor(0x000011, 1);
+                        renderer.clear();
+                        
+                        // Update camera position based on controls
                         const radius = controls.zoom;
                         camera.position.x = radius * Math.sin(controls.rotationY) * Math.cos(controls.rotationX);
                         camera.position.y = radius * Math.sin(controls.rotationX);
@@ -582,30 +596,44 @@
                 }
 
                 try {
-                    // Simplify AR session request to avoid freezing
+                    console.log('Starting AR session...');
+                    
+                    // Request basic AR session
                     const session = await navigator.xr.requestSession('immersive-ar');
+                    console.log('AR session created');
+
+                    // Configure renderer for AR
+                    rendererRef.current.setClearColor(0x000000, 0);
+                    rendererRef.current.autoClear = false;
 
                     // Position solar system for AR (smaller scale)
                     if (sunRef.current) {
-                        sunRef.current.position.set(0, 1.0, -2);
-                        sunRef.current.scale.setScalar(0.3); // Scale down for AR
+                        sunRef.current.position.set(0, 0, -1.5);
+                        sunRef.current.scale.setScalar(0.2);
                         
                         planetsRef.current.forEach(planet => {
                             const angle = planet.userData.angle;
-                            const distance = planet.userData.distance * 0.3; // Much closer in AR
+                            const distance = planet.userData.distance * 0.2;
                             planet.position.x = Math.cos(angle) * distance;
-                            planet.position.y = 1.0;
-                            planet.position.z = -2 + Math.sin(angle) * distance;
-                            planet.scale.setScalar(0.3); // Scale down planets too
+                            planet.position.y = 0;
+                            planet.position.z = -1.5 + Math.sin(angle) * distance;
+                            planet.scale.setScalar(0.2);
                         });
                     }
 
                     await rendererRef.current.xr.setSession(session);
                     setXrSession(session);
                     setArActive(true);
+                    console.log('AR session active');
 
                     session.addEventListener('end', () => {
-                        // Reset to normal mode
+                        console.log('AR session ended');
+                        
+                        // Reset renderer
+                        rendererRef.current.setClearColor(0x000011, 1);
+                        rendererRef.current.autoClear = true;
+                        
+                        // Reset solar system
                         if (sunRef.current) {
                             sunRef.current.position.set(0, 0, 0);
                             sunRef.current.scale.setScalar(1);
@@ -626,7 +654,7 @@
 
                 } catch (error) {
                     console.error('AR Error:', error);
-                    showARRequirements();
+                    alert(`AR failed: ${error.message}. Try reloading the page.`);
                 }
             };
 
