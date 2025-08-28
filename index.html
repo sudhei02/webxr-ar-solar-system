@@ -173,8 +173,9 @@
             saturnGroup.add(saturn);
             saturnGroup.add(saturnRings);
             
-            // Position Saturn in front of camera
-            saturnGroup.position.set(0, 0, -1);
+            // Position Saturn closer and bigger for AR
+            saturnGroup.position.set(0, 0, -0.5); // Closer to camera
+            saturnGroup.scale.set(2, 2, 2); // Make it bigger
             scene.add(saturnGroup);
             
             // Add some light so we can see Saturn
