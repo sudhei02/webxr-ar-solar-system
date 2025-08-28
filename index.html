@@ -173,9 +173,14 @@
             saturnGroup.add(saturn);
             saturnGroup.add(saturnRings);
             
-            // Position Saturn closer and bigger for AR
-            saturnGroup.position.set(0, 0, -0.5); // Closer to camera
-            saturnGroup.scale.set(2, 2, 2); // Make it bigger
+            // Position Saturn RIGHT IN FRONT so you can't miss it
+            saturnGroup.position.set(0, 0, -0.3); // Very close
+            saturnGroup.scale.set(4, 4, 4); // Giant size
+            
+            // Make Saturn glow so it's super visible
+            saturn.material.emissive = new THREE.Color(0x222244);
+            saturnRings.material.emissive = new THREE.Color(0x221100);
+            
             scene.add(saturnGroup);
             
             // Add some light so we can see Saturn
