@@ -1,793 +1,571 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Solar System AR</title>
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-            font-family: Arial, sans-serif;
-            touch-action: none;
-            background: #000011 !important;
-        }
-        
-        .planet-info {
-            position: absolute;
-            background: rgba(0,0,0,0.9);
-            color: white;
-            padding: 20px;
-            border-radius: 15px;
-            border: 2px solid #ff6b35;
-            max-width: 300px;
-            z-index: 100;
-            backdrop-filter: blur(10px);
-        }
-        
-        .planet-info h3 {
-            margin: 0 0 10px 0;
-            color: #ff6b35;
-            font-size: 1.4em;
-        }
-        
-        .planet-info p {
-            margin: 5px 0;
-            line-height: 1.4;
-        }
-        
-        .close-btn {
-            position: absolute;
-            top: 10px;
-            right: 15px;
-            background: none;
-            border: none;
-            color: #ff6b35;
-            font-size: 1.5em;
-            cursor: pointer;
-        }
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title>Enhanced Solar System 3D — improved</title>
 
-        .debug-info {
-            position: absolute;
-            top: 100px;
-            left: 15px;
-            background: rgba(0,0,0,0.9);
-            color: #00ff00;
-            padding: 10px;
-            border-radius: 5px;
-            font-family: monospace;
-            font-size: 12px;
-            z-index: 20;
-            max-width: 300px;
-        }
-    </style>
+  <!-- Production React + ReactDOM UMD -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+  <!-- Three.js (r128 compatible with your code style) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <!-- Optional model-viewer for iOS Quick Look fallback (module script) -->
+  <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+
+  <style>
+    html,body { height:100%; margin:0; background:#000011; font-family: Arial, sans-serif; }
+    #root { width:100vw; height:100vh; position:relative; overflow:hidden; touch-action: manipulation; }
+    .title {
+      position:absolute; left:15px; top:15px; z-index:12;
+      background: rgba(0,0,0,0.7); padding:10px 16px; border-radius:10px; border:1px solid rgba(255,255,255,0.08);
+    }
+    .title h2 { margin:0; font-size:1.15rem; background: linear-gradient(45deg,#ff6b35,#f7931e); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+    .debug-info {
+      position:absolute; left:15px; top:70px; z-index:12;
+      background: rgba(0,0,0,0.85); padding:8px 10px; border-radius:6px; font-family:monospace; font-size:12px;
+      color:#00ff00;
+    }
+    .planet-info {
+      position:absolute; z-index:20; background: rgba(0,0,0,0.9); color:#fff; padding:18px; border-radius:12px; border:2px solid #ff6b35; max-width:320px; backdrop-filter: blur(8px);
+    }
+    .close-btn { position:absolute; right:12px; top:8px; background:none; border:none; color:#ff6b35; font-size:18px; cursor:pointer; }
+    .ar-button {
+      position:absolute; right:15px; top:15px; z-index:12; padding:10px 14px; border-radius:18px; border:none; cursor:pointer;
+      background: linear-gradient(45deg,#666,#888); color:white; opacity:0.9;
+    }
+    .instructions {
+      position:absolute; left:15px; right:15px; bottom:15px; z-index:12; background:rgba(0,0,0,0.85); padding:10px; border-radius:10px; text-align:center; font-size:0.92rem; border:1px solid rgba(255,255,255,0.08);
+    }
+    model-viewer { display:none; }
+  </style>
 </head>
 <body>
-    <div id="root"></div>
+  <div id="root"></div>
 
-    <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
+  <script>
+  (function () {
+    const React = window.React;
+    const ReactDOM = window.ReactDOM;
+    const { useRef, useEffect, useState } = React;
+    const THREE = window.THREE;
 
-        const SolarSystemAR = () => {
-            const mountRef = useRef(null);
-            const sceneRef = useRef(null);
-            const rendererRef = useRef(null);
-            const cameraRef = useRef(null);
-            const planetsRef = useRef([]);
-            const sunRef = useRef(null);
-            const clockRef = useRef(null);
-            const raycasterRef = useRef(null);
-            
-            const [arSupported, setArSupported] = useState(false);
-            const [isChecking, setIsChecking] = useState(true);
-            const [arActive, setArActive] = useState(false);
-            const [xrSession, setXrSession] = useState(null);
-            const [selectedPlanet, setSelectedPlanet] = useState(null);
-            const [planetInfoPos, setPlanetInfoPos] = useState({ x: 0, y: 0 });
-            const [debugInfo, setDebugInfo] = useState('Loading...');
+    function isIos() {
+      return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    }
 
-            const planetData = [
-                { 
-                    name: 'Mercury', 
-                    size: 0.15,
-                    distance: 0.8, 
-                    speed: 0.8, 
-                    color: 0x8C7853,
-                    secondaryColor: 0x5A4A3A,
-                    type: 'rocky',
-                    details: {
-                        diameter: '4,879 km',
-                        distance: '57.9 million km from Sun',
-                        day: '176 Earth days',
-                        year: '88 Earth days',
-                        facts: 'Closest to Sun, covered in craters'
-                    }
-                },
-                { 
-                    name: 'Venus', 
-                    size: 0.18,
-                    distance: 1.1, 
-                    speed: 0.6, 
-                    color: 0xFFD700,
-                    secondaryColor: 0xFF8C00,
-                    type: 'atmospheric',
-                    details: {
-                        diameter: '12,104 km',
-                        distance: '108.2 million km from Sun', 
-                        day: '243 Earth days',
-                        year: '225 Earth days',
-                        facts: 'Hottest planet, thick toxic atmosphere'
-                    }
-                },
-                { 
-                    name: 'Earth', 
-                    size: 0.18,
-                    distance: 1.4, 
-                    speed: 0.5, 
-                    color: 0x4A90E2,
-                    secondaryColor: 0x228B22,
-                    type: 'earth',
-                    details: {
-                        diameter: '12,756 km',
-                        distance: '149.6 million km from Sun',
-                        day: '24 hours',
-                        year: '365.25 days', 
-                        facts: 'Only known planet with life, 71% water'
-                    }
-                },
-                { 
-                    name: 'Mars', 
-                    size: 0.14,
-                    distance: 1.8, 
-                    speed: 0.4, 
-                    color: 0xCD5C5C,
-                    secondaryColor: 0xFFFFFF,
-                    type: 'desert',
-                    details: {
-                        diameter: '6,792 km',
-                        distance: '227.9 million km from Sun',
-                        day: '24.6 hours', 
-                        year: '687 Earth days',
-                        facts: 'Red planet, has polar ice caps and dust storms'
-                    }
-                },
-                { 
-                    name: 'Jupiter', 
-                    size: 0.4,
-                    distance: 2.5, 
-                    speed: 0.25, 
-                    color: 0xD2691E,
-                    secondaryColor: 0x8B4513,
-                    type: 'gas_giant',
-                    details: {
-                        diameter: '142,984 km',
-                        distance: '778.5 million km from Sun',
-                        day: '9.9 hours',
-                        year: '11.9 Earth years',
-                        facts: 'Largest planet, Great Red Spot storm, 79+ moons'
-                    }
-                },
-                { 
-                    name: 'Saturn', 
-                    size: 0.35,
-                    distance: 3.2, 
-                    speed: 0.2, 
-                    color: 0xFAD5A5,
-                    secondaryColor: 0xDEB887,
-                    type: 'ringed',
-                    details: {
-                        diameter: '120,536 km',
-                        distance: '1.43 billion km from Sun', 
-                        day: '10.7 hours',
-                        year: '29.4 Earth years',
-                        facts: 'Famous rings made of ice and rock, 82+ moons'
-                    }
-                },
-                { 
-                    name: 'Uranus', 
-                    size: 0.25,
-                    distance: 4.0, 
-                    speed: 0.15, 
-                    color: 0x40E0D0,
-                    secondaryColor: 0x48D1CC,
-                    type: 'ice_giant',
-                    details: {
-                        diameter: '51,118 km',
-                        distance: '2.87 billion km from Sun',
-                        day: '17.2 hours', 
-                        year: '84 Earth years',
-                        facts: 'Tilted 98°, ice giant, faint rings'
-                    }
-                },
-                { 
-                    name: 'Neptune', 
-                    size: 0.24,
-                    distance: 4.8, 
-                    speed: 0.1, 
-                    color: 0x4169E1,
-                    secondaryColor: 0x0000CD,
-                    type: 'ice_giant',
-                    details: {
-                        diameter: '49,528 km',
-                        distance: '4.5 billion km from Sun',
-                        day: '16.1 hours',
-                        year: '164.8 Earth years', 
-                        facts: 'Windiest planet (2100 km/h), deep blue color'
-                    }
-                }
-            ];
+    function SolarSystemApp() {
+      const mountRef = useRef(null);
+      const rendererRef = useRef(null);
+      const sceneRef = useRef(null);
+      const cameraRef = useRef(null);
+      const animationActiveRef = useRef(true);
+      const raycasterRef = useRef(null);
+      const planetsRef = useRef([]);
+      const texturesToDispose = useRef([]);
+      const materialsToDispose = useRef([]);
+      const geometriesToDispose = useRef([]);
+      const [debugInfo, setDebugInfo] = useState('Initializing...');
+      const [debugIsError, setDebugIsError] = useState(false);
+      const [selectedPlanet, setSelectedPlanet] = useState(null);
+      const [planetInfoPos, setPlanetInfoPos] = useState({x:0,y:0});
+      const [arSupported, setArSupported] = useState(false);
+      const [xrSession, setXrSession] = useState(null);
 
-            const sunData = {
-                name: 'The Sun',
-                details: {
-                    diameter: '1.39 million km',
-                    distance: 'Center of Solar System',
-                    temperature: '5,778 K surface / 15 million K core',
-                    composition: '73% Hydrogen, 25% Helium',
-                    age: '4.6 billion years',
-                    facts: '99.86% of Solar System mass, nuclear fusion reactor'
-                }
-            };
+      const planetData = [
+        { name:'Mercury', size:0.15, distance:0.8, speed:0.8, color:0x8C7853, type:'rocky', details:{diameter:'4,879 km', distance:'57.9 million km from Sun', facts:'Closest to Sun, covered in craters'}},
+        { name:'Venus', size:0.18, distance:1.1, speed:0.6, color:0xFFD700, type:'atmospheric', details:{diameter:'12,104 km', distance:'108.2 million km from Sun', facts:'Hottest planet, thick toxic atmosphere'}},
+        { name:'Earth', size:0.18, distance:1.4, speed:0.5, color:0x4A90E2, type:'earth', details:{diameter:'12,756 km', distance:'149.6 million km from Sun', facts:'Only known planet with life, 71% water'}},
+        { name:'Mars', size:0.14, distance:1.8, speed:0.4, color:0xCD5C5C, type:'desert', details:{diameter:'6,792 km', distance:'227.9 million km from Sun', facts:'Red planet, polar ice caps and dust storms'}},
+        { name:'Jupiter', size:0.4, distance:2.5, speed:0.25, color:0xD2691E, type:'gas_giant', details:{diameter:'142,984 km', distance:'778.5 million km from Sun', facts:'Largest planet, Great Red Spot'}},
+        { name:'Saturn', size:0.35, distance:3.2, speed:0.2, color:0xFAD5A5, type:'ringed', details:{diameter:'120,536 km', distance:'1.43 billion km from Sun', facts:'Famous rings'}},
+        { name:'Uranus', size:0.25, distance:4.0, speed:0.15, color:0x40E0D0, type:'ice_giant', details:{diameter:'51,118 km', distance:'2.87 billion km from Sun', facts:'Tilted 98°, faint rings'}},
+        { name:'Neptune', size:0.24, distance:4.8, speed:0.1, color:0x4169E1, type:'ice_giant', details:{diameter:'49,528 km', distance:'4.5 billion km from Sun', facts:'Windiest planet'}},
+      ];
 
-            const controls = useRef({
-                isDragging: false,
-                startX: 0,
-                startY: 0,
-                rotationX: 0,
-                rotationY: 0,
-                distance: 8
-            });
+      const sunData = { name:'The Sun', details:{diameter:'1.39 million km', facts:'99.86% of Solar System mass'} };
 
-            const updateDebug = (message) => {
-                console.log('Debug:', message);
-                setDebugInfo(message);
-            };
+      // Controls
+      const controls = useRef({
+        rotationX: 0,
+        rotationY: 0,
+        isDragging: false,
+        lastPointerX: 0,
+        lastPointerY: 0,
+        distance: 8
+      });
 
-            useEffect(() => {
-                const checkARSupport = async () => {
-                    updateDebug('Checking AR support...');
-                    
-                    if (!navigator.xr) {
-                        updateDebug('❌ WebXR not available');
-                        setIsChecking(false);
-                        return;
-                    }
+      // set debug helper
+      function updateDebug(msg, isError=false) {
+        setDebugInfo(msg);
+        setDebugIsError(Boolean(isError));
+        console.log('Debug:', msg);
+      }
 
-                    try {
-                        const supported = await navigator.xr.isSessionSupported('immersive-ar');
-                        updateDebug(supported ? '✅ AR supported' : '❌ AR not supported');
-                        setArSupported(supported);
-                    } catch (error) {
-                        updateDebug(`❌ AR check failed: ${error.message}`);
-                        setArSupported(false);
-                    } finally {
-                        setIsChecking(false);
-                    }
-                };
+      function createPlanetMaterial(planetInfo) {
+        // returns THREE.Material and registers textures/materials for disposal
+        if (planetInfo.type === 'earth') {
+          const canvas = document.createElement('canvas');
+          canvas.width = 256; canvas.height = 256;
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#4A90E2'; ctx.fillRect(0,0,256,256);
+          ctx.fillStyle = '#228B22';
+          for (let i=0;i<12;i++){ ctx.beginPath(); ctx.arc(Math.random()*256, Math.random()*256, Math.random()*30+8,0,Math.PI*2); ctx.fill(); }
+          ctx.fillStyle = 'rgba(255,255,255,0.35)';
+          for(let i=0;i<18;i++){ ctx.beginPath(); ctx.arc(Math.random()*256, Math.random()*256, Math.random()*18+4,0,Math.PI*2); ctx.fill(); }
+          const tex = new THREE.CanvasTexture(canvas);
+          tex.encoding = THREE.sRGBEncoding;
+          texturesToDispose.current.push(tex);
+          const mat = new THREE.MeshPhongMaterial({ map: tex, shininess:30 });
+          materialsToDispose.current.push(mat);
+          return mat;
+        }
+        if (planetInfo.type === 'gas_giant') {
+          const canvas = document.createElement('canvas'); canvas.width=256; canvas.height=256;
+          const ctx = canvas.getContext('2d');
+          for(let y=0;y<256;y+=20){ ctx.fillStyle = y%40===0 ? '#D2691E' : '#8B4513'; ctx.fillRect(0,y,256,20); }
+          ctx.fillStyle = '#CD5C5C'; ctx.beginPath(); ctx.ellipse(180,120,25,15,0,0,Math.PI*2); ctx.fill();
+          const tex = new THREE.CanvasTexture(canvas); tex.encoding = THREE.sRGBEncoding;
+          texturesToDispose.current.push(tex);
+          const mat = new THREE.MeshPhongMaterial({ map: tex });
+          materialsToDispose.current.push(mat);
+          return mat;
+        }
+        if (planetInfo.type === 'desert') {
+          const canvas = document.createElement('canvas'); canvas.width=256; canvas.height=256;
+          const ctx = canvas.getContext('2d'); ctx.fillStyle='#CD5C5C'; ctx.fillRect(0,0,256,256);
+          ctx.fillStyle='#FFFFFF'; ctx.beginPath(); ctx.arc(128,20,15,0,Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(128,236,15,0,Math.PI*2); ctx.fill();
+          ctx.fillStyle='#8B0000'; for(let i=0;i<10;i++){ ctx.beginPath(); ctx.arc(Math.random()*256,Math.random()*256,Math.random()*8+2,0,Math.PI*2); ctx.fill(); }
+          const tex = new THREE.CanvasTexture(canvas); tex.encoding = THREE.sRGBEncoding;
+          texturesToDispose.current.push(tex);
+          const mat = new THREE.MeshPhongMaterial({ map: tex });
+          materialsToDispose.current.push(mat);
+          return mat;
+        }
+        if (planetInfo.type === 'rocky') {
+          const canvas = document.createElement('canvas'); canvas.width=128; canvas.height=128;
+          const ctx = canvas.getContext('2d'); ctx.fillStyle='#8C7853'; ctx.fillRect(0,0,128,128);
+          ctx.fillStyle='#5A4A3A'; for(let i=0;i<20;i++){ ctx.beginPath(); ctx.arc(Math.random()*128,Math.random()*128,Math.random()*6+2,0,Math.PI*2); ctx.fill(); }
+          const tex = new THREE.CanvasTexture(canvas); tex.encoding = THREE.sRGBEncoding;
+          texturesToDispose.current.push(tex);
+          const mat = new THREE.MeshPhongMaterial({ map: tex });
+          materialsToDispose.current.push(mat);
+          return mat;
+        }
+        // ice_giant or atmospheric fallback
+        const mat = new THREE.MeshPhongMaterial({ color: planetInfo.color, shininess:40 });
+        materialsToDispose.current.push(mat);
+        return mat;
+      }
 
-                checkARSupport();
-            }, []);
+      useEffect(() => {
+        if (!mountRef.current) return;
+        if (!THREE) { updateDebug('Three.js is missing', true); return; }
 
-            // Create unique planet materials with visual features
-            const createPlanetMaterial = (planetInfo) => {
-                const THREE = window.THREE;
-                
-                if (planetInfo.type === 'earth') {
-                    // Earth: Blue with green continents and white clouds
-                    const canvas = document.createElement('canvas');
-                    canvas.width = 256;
-                    canvas.height = 256;
-                    const ctx = canvas.getContext('2d');
-                    
-                    // Ocean base
-                    ctx.fillStyle = '#4A90E2';
-                    ctx.fillRect(0, 0, 256, 256);
-                    
-                    // Continents (green patches)
-                    ctx.fillStyle = '#228B22';
-                    for (let i = 0; i < 15; i++) {
-                        ctx.beginPath();
-                        ctx.arc(Math.random() * 256, Math.random() * 256, Math.random() * 30 + 10, 0, Math.PI * 2);
-                        ctx.fill();
-                    }
-                    
-                    // Clouds (white patches)
-                    ctx.fillStyle = 'rgba(255,255,255,0.3)';
-                    for (let i = 0; i < 20; i++) {
-                        ctx.beginPath();
-                        ctx.arc(Math.random() * 256, Math.random() * 256, Math.random() * 20 + 5, 0, Math.PI * 2);
-                        ctx.fill();
-                    }
-                    
-                    const texture = new THREE.CanvasTexture(canvas);
-                    return new THREE.MeshPhongMaterial({ map: texture, shininess: 30 });
-                    
-                } else if (planetInfo.type === 'gas_giant') {
-                    // Jupiter: Banded with Great Red Spot
-                    const canvas = document.createElement('canvas');
-                    canvas.width = 256;
-                    canvas.height = 256;
-                    const ctx = canvas.getContext('2d');
-                    
-                    // Create horizontal bands
-                    for (let y = 0; y < 256; y += 20) {
-                        ctx.fillStyle = y % 40 === 0 ? '#D2691E' : '#8B4513';
-                        ctx.fillRect(0, y, 256, 20);
-                    }
-                    
-                    // Great Red Spot
-                    ctx.fillStyle = '#CD5C5C';
-                    ctx.beginPath();
-                    ctx.ellipse(180, 120, 25, 15, 0, 0, Math.PI * 2);
-                    ctx.fill();
-                    
-                    const texture = new THREE.CanvasTexture(canvas);
-                    return new THREE.MeshPhongMaterial({ map: texture });
-                    
-                } else if (planetInfo.type === 'desert') {
-                    // Mars: Red with white polar caps
-                    const canvas = document.createElement('canvas');
-                    canvas.width = 256;
-                    canvas.height = 256;
-                    const ctx = canvas.getContext('2d');
-                    
-                    // Red surface
-                    ctx.fillStyle = '#CD5C5C';
-                    ctx.fillRect(0, 0, 256, 256);
-                    
-                    // Polar ice caps (white circles at top and bottom)
-                    ctx.fillStyle = '#FFFFFF';
-                    ctx.beginPath();
-                    ctx.arc(128, 20, 15, 0, Math.PI * 2);
-                    ctx.fill();
-                    ctx.beginPath();
-                    ctx.arc(128, 236, 15, 0, Math.PI * 2);
-                    ctx.fill();
-                    
-                    // Dark spots (craters/features)
-                    ctx.fillStyle = '#8B0000';
-                    for (let i = 0; i < 10; i++) {
-                        ctx.beginPath();
-                        ctx.arc(Math.random() * 256, Math.random() * 256, Math.random() * 8 + 2, 0, Math.PI * 2);
-                        ctx.fill();
-                    }
-                    
-                    const texture = new THREE.CanvasTexture(canvas);
-                    return new THREE.MeshPhongMaterial({ map: texture });
-                    
-                } else if (planetInfo.type === 'atmospheric') {
-                    // Venus: Thick atmosphere effect
-                    return new THREE.MeshPhongMaterial({ 
-                        color: planetInfo.color,
-                        emissive: planetInfo.secondaryColor,
-                        emissiveIntensity: 0.2,
-                        shininess: 50
-                    });
-                    
-                } else if (planetInfo.type === 'rocky') {
-                    // Mercury: Cratered surface
-                    const canvas = document.createElement('canvas');
-                    canvas.width = 128;
-                    canvas.height = 128;
-                    const ctx = canvas.getContext('2d');
-                    
-                    ctx.fillStyle = '#8C7853';
-                    ctx.fillRect(0, 0, 128, 128);
-                    
-                    // Craters
-                    ctx.fillStyle = '#5A4A3A';
-                    for (let i = 0; i < 20; i++) {
-                        ctx.beginPath();
-                        ctx.arc(Math.random() * 128, Math.random() * 128, Math.random() * 6 + 2, 0, Math.PI * 2);
-                        ctx.fill();
-                    }
-                    
-                    const texture = new THREE.CanvasTexture(canvas);
-                    return new THREE.MeshPhongMaterial({ map: texture });
-                    
-                } else {
-                    // Ice giants: Smooth colored surface
-                    return new THREE.MeshPhongMaterial({ 
-                        color: planetInfo.color,
-                        shininess: 40
-                    });
-                }
-            };
+        updateDebug('Building scene...');
+        const scene = new THREE.Scene();
+        sceneRef.current = scene;
 
-            useEffect(() => {
-                if (!mountRef.current) return;
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+        camera.position.set(0,2,8);
+        camera.lookAt(0,0,0);
+        cameraRef.current = camera;
 
-                const THREE = window.THREE;
-                if (!THREE) return;
+        const renderer = new THREE.WebGLRenderer({ alpha:true, antialias:true, preserveDrawingBuffer:false, powerPreference:'high-performance' });
+        renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.outputEncoding = THREE.sRGBEncoding;
+        renderer.physicallyCorrectLights = true;
+        renderer.setClearColor(0x000011, 1);
+        rendererRef.current = renderer;
 
-                updateDebug('Building solar system...');
+        // attach canvas
+        mountRef.current.appendChild(renderer.domElement);
 
-                const scene = new THREE.Scene();
-                const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-                const renderer = new THREE.WebGLRenderer({ 
-                    antialias: false,
-                    alpha: true,
-                    preserveDrawingBuffer: true
-                });
-                const raycaster = new THREE.Raycaster();
-                
-                renderer.setSize(window.innerWidth, window.innerHeight);
-                renderer.setClearColor(0x000011, 1); // Always dark background
-                renderer.xr.enabled = true;
-                mountRef.current.appendChild(renderer.domElement);
+        // lights
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.45);
+        scene.add(ambientLight);
+        const sunLight = new THREE.PointLight(0xffffff, 1.2, 100);
+        sunLight.position.set(0,0,0);
+        scene.add(sunLight);
 
-                // Starfield
-                const starGeometry = new THREE.BufferGeometry();
-                const starMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 1.5 });
-                const starVertices = [];
-                for (let i = 0; i < 800; i++) {
-                    starVertices.push((Math.random() - 0.5) * 1000);
-                    starVertices.push((Math.random() - 0.5) * 1000);
-                    starVertices.push((Math.random() - 0.5) * 1000);
-                }
-                starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starVertices, 3));
-                scene.add(new THREE.Points(starGeometry, starMaterial));
+        // starfield
+        const starCount = 800;
+        const starPositions = new Float32Array(starCount*3);
+        for (let i=0;i<starCount;i++){
+          starPositions[i*3+0] = (Math.random()-0.5)*1000;
+          starPositions[i*3+1] = (Math.random()-0.5)*1000;
+          starPositions[i*3+2] = (Math.random()-0.5)*1000;
+        }
+        const starGeom = new THREE.BufferGeometry();
+        starGeom.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+        const starMat = new THREE.PointsMaterial({ size:1.2, sizeAttenuation:true });
+        const stars = new THREE.Points(starGeom, starMat);
+        scene.add(stars);
+        geometriesToDispose.current.push(starGeom);
+        materialsToDispose.current.push(starMat);
 
-                camera.position.set(0, 2, 8);
-                camera.lookAt(0, 0, 0);
+        // Sun group + mesh
+        const sunGroup = new THREE.Group();
+        const sunGeo = new THREE.SphereGeometry(0.3, 24, 24);
+        geometriesToDispose.current.push(sunGeo);
 
-                const clock = new THREE.Clock();
+        // create sun canvas texture
+        const sunCanvas = document.createElement('canvas');
+        sunCanvas.width = 256; sunCanvas.height = 256;
+        const sctx = sunCanvas.getContext('2d');
+        const gradient = sctx.createRadialGradient(128,128,0,128,128,128);
+        gradient.addColorStop(0, '#FFFF88');
+        gradient.addColorStop(0.4, '#FFAA00');
+        gradient.addColorStop(0.8, '#FF6600');
+        gradient.addColorStop(1, '#CC3300');
+        sctx.fillStyle = gradient; sctx.fillRect(0,0,256,256);
+        // flares
+        for (let i=0;i<28;i++){
+          const x=Math.random()*256, y=Math.random()*256;
+          const g=sctx.createRadialGradient(x,y,0,x,y,Math.random()*20+5);
+          g.addColorStop(0,'rgba(255,255,255,0.9)'); g.addColorStop(1,'rgba(255,200,0,0.08)');
+          sctx.fillStyle=g; sctx.beginPath(); sctx.arc(x,y,Math.random()*15+5,0,Math.PI*2); sctx.fill();
+        }
+        const sunTex = new THREE.CanvasTexture(sunCanvas); sunTex.encoding = THREE.sRGBEncoding;
+        texturesToDispose.current.push(sunTex);
+        const sunMat = new THREE.MeshPhongMaterial({ map: sunTex, emissive:0xFF8A00, emissiveIntensity:0.6 });
+        materialsToDispose.current.push(sunMat);
+        const sunMesh = new THREE.Mesh(sunGeo, sunMat);
+        sunMesh.userData = sunData;
+        sunGroup.add(sunMesh);
+        scene.add(sunGroup);
 
-                // Lighting
-                const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
-                scene.add(ambientLight);
-                const sunLight = new THREE.PointLight(0xffffff, 1.2, 50);
-                scene.add(sunLight);
+        // Raycaster
+        const raycaster = new THREE.Raycaster();
+        raycasterRef.current = raycaster;
 
-                // Enhanced Sun
-                const sunGroup = new THREE.Group();
-                const sunGeometry = new THREE.SphereGeometry(0.3, 20, 20);
-                
-                // Sun texture with solar flares
-                const sunCanvas = document.createElement('canvas');
-                sunCanvas.width = 256;
-                sunCanvas.height = 256;
-                const sunCtx = sunCanvas.getContext('2d');
-                
-                const gradient = sunCtx.createRadialGradient(128, 128, 0, 128, 128, 128);
-                gradient.addColorStop(0, '#FFFF88');
-                gradient.addColorStop(0.4, '#FFAA00');
-                gradient.addColorStop(0.8, '#FF6600');
-                gradient.addColorStop(1, '#CC3300');
-                
-                sunCtx.fillStyle = gradient;
-                sunCtx.fillRect(0, 0, 256, 256);
-                
-                // Solar flares
-                for (let i = 0; i < 30; i++) {
-                    const x = Math.random() * 256;
-                    const y = Math.random() * 256;
-                    const flareGradient = sunCtx.createRadialGradient(x, y, 0, x, y, Math.random() * 20 + 5);
-                    flareGradient.addColorStop(0, 'rgba(255,255,255,0.8)');
-                    flareGradient.addColorStop(1, 'rgba(255,200,0,0.1)');
-                    
-                    sunCtx.fillStyle = flareGradient;
-                    sunCtx.beginPath();
-                    sunCtx.arc(x, y, Math.random() * 15 + 5, 0, Math.PI * 2);
-                    sunCtx.fill();
-                }
-                
-                const sunTexture = new THREE.CanvasTexture(sunCanvas);
-                const sunMaterial = new THREE.MeshBasicMaterial({ 
-                    map: sunTexture,
-                    emissive: 0xFFAA00,
-                    emissiveIntensity: 0.4
-                });
-                
-                const sun = new THREE.Mesh(sunGeometry, sunMaterial);
-                sun.userData = sunData;
-                sunGroup.add(sun);
-                scene.add(sunGroup);
+        // Create planets
+        const planets = [];
+        planetData.forEach(info => {
+          const group = new THREE.Group();
+          const geo = new THREE.SphereGeometry(info.size, 24, 24);
+          geometriesToDispose.current.push(geo);
+          const mat = createPlanetMaterial(info);
+          const mesh = new THREE.Mesh(geo, mat);
+          // set initial angle
+          mesh.userData = Object.assign({}, info, { angle: Math.random() * Math.PI * 2 });
+          // Special case: Uranus tilt applied once to the mesh
+          if (info.name === 'Uranus') {
+            mesh.rotation.z = Math.PI / 2;
+          }
+          group.add(mesh);
+          // Saturn rings
+          if (info.name === 'Saturn') {
+            const ring = new THREE.Mesh(new THREE.RingGeometry(info.size+0.05, info.size+0.17, 48), new THREE.MeshBasicMaterial({ color:0xDDDDDD, side:THREE.DoubleSide, transparent:true, opacity:0.7 }));
+            ring.rotation.x = Math.PI/2;
+            group.add(ring);
+            materialsToDispose.current.push(ring.material);
+            geometriesToDispose.current.push(ring.geometry);
+          }
+          // position
+          const angle = mesh.userData.angle;
+          group.position.set(Math.cos(angle)*info.distance, 0, Math.sin(angle)*info.distance);
+          scene.add(group);
+          planets.push({ group, mesh });
+        });
+        planetsRef.current = planets;
+        updateDebug('✅ Scene ready — drag to rotate, pinch to zoom, tap planets');
 
-                // Create planets with unique features
-                const planets = [];
-                planetData.forEach((planetInfo) => {
-                    const planetGroup = new THREE.Group();
-                    const geometry = new THREE.SphereGeometry(planetInfo.size, 20, 20);
-                    const material = createPlanetMaterial(planetInfo);
-                    const planet = new THREE.Mesh(geometry, material);
-                    
-                    planet.userData = {
-                        ...planetInfo,
-                        angle: Math.random() * Math.PI * 2
-                    };
-                    
-                    planetGroup.add(planet);
-                    
-                    // Add Saturn's rings
-                    if (planetInfo.name === 'Saturn') {
-                        const ringGeometry = new THREE.RingGeometry(planetInfo.size + 0.05, planetInfo.size + 0.15, 32);
-                        const ringMaterial = new THREE.MeshBasicMaterial({ 
-                            color: 0xDDDDDD, 
-                            side: THREE.DoubleSide, 
-                            transparent: true, 
-                            opacity: 0.7 
-                        });
-                        const rings = new THREE.Mesh(ringGeometry, ringMaterial);
-                        rings.rotation.x = Math.PI / 2;
-                        planetGroup.add(rings);
-                    }
-                    
-                    const angle = planet.userData.angle;
-                    planetGroup.position.x = Math.cos(angle) * planetInfo.distance;
-                    planetGroup.position.z = Math.sin(angle) * planetInfo.distance;
-                    
-                    scene.add(planetGroup);
-                    planets.push({ group: planetGroup, planet: planet });
-                });
+        // Animation loop
+        const clock = new THREE.Clock();
 
-                updateDebug('✅ Solar system ready! Drag to explore');
+        function animateLoop() {
+          if (!animationActiveRef.current) return;
+          const dt = clock.getDelta();
 
-                // Event handlers
-                const handlePointerStart = (event) => {
-                    if (arActive) return;
-                    event.preventDefault();
-                    controls.current.isDragging = true;
-                    const clientX = event.touches ? event.touches[0].clientX : event.clientX;
-                    const clientY = event.touches ? event.touches[0].clientY : event.clientY;
-                    controls.current.startX = clientX;
-                    controls.current.startY = clientY;
-                };
+          // camera controls when not in XR
+          if (!renderer.xr.isPresenting) {
+            const d = controls.current.distance;
+            camera.position.x = d * Math.sin(controls.current.rotationY) * Math.cos(controls.current.rotationX);
+            camera.position.y = d * Math.sin(controls.current.rotationX);
+            camera.position.z = d * Math.cos(controls.current.rotationY) * Math.cos(controls.current.rotationX);
+            camera.lookAt(0,0,0);
+          }
 
-                const handlePointerMove = (event) => {
-                    if (arActive || !controls.current.isDragging) return;
-                    event.preventDefault();
-                    const clientX = event.touches ? event.touches[0].clientX : event.clientX;
-                    const clientY = event.touches ? event.touches[0].clientY : event.clientY;
-                    
-                    const deltaX = clientX - controls.current.startX;
-                    const deltaY = clientY - controls.current.startY;
-                    
-                    controls.current.rotationY += deltaX * 0.01;
-                    controls.current.rotationX += deltaY * 0.01;
-                    controls.current.rotationX = Math.max(-Math.PI/2, Math.min(Math.PI/2, controls.current.rotationX));
-                    
-                    controls.current.startX = clientX;
-                    controls.current.startY = clientY;
-                };
+          // sun rotate
+          sunGroup.rotation.y += dt * 0.3;
 
-                const handlePointerEnd = () => {
-                    controls.current.isDragging = false;
-                };
+          // planets animate
+          planets.forEach(({ group, mesh }) => {
+            mesh.userData.angle += dt * mesh.userData.speed * 0.02;
+            const a = mesh.userData.angle;
+            const dist = mesh.userData.distance;
+            group.position.x = Math.cos(a) * dist;
+            group.position.z = Math.sin(a) * dist;
+            mesh.rotation.y += dt * 0.5;
+          });
 
-                const handleWheel = (event) => {
-                    if (arActive) return;
-                    event.preventDefault();
-                    controls.current.distance += event.deltaY * 0.01;
-                    controls.current.distance = Math.max(2, Math.min(15, controls.current.distance));
-                };
+          renderer.render(scene, camera);
+        }
 
-                const handleClick = (event) => {
-                    if (arActive || controls.current.isDragging) return;
-                    
-                    const rect = renderer.domElement.getBoundingClientRect();
-                    const mouse = {
-                        x: ((event.clientX - rect.left) / rect.width) * 2 - 1,
-                        y: -((event.clientY - rect.top) / rect.height) * 2 + 1
-                    };
-                    
-                    raycaster.setFromCamera(mouse, camera);
-                    
-                    const sunIntersects = raycaster.intersectObjects([sun]);
-                    if (sunIntersects.length > 0) {
-                        setSelectedPlanet(sunData);
-                        setPlanetInfoPos({ x: event.clientX, y: event.clientY });
-                        return;
-                    }
-                    
-                    const planetMeshes = planets.map(p => p.planet);
-                    const intersects = raycaster.intersectObjects(planetMeshes);
-                    if (intersects.length > 0) {
-                        const planet = intersects[0].object;
-                        setSelectedPlanet(planet.userData);
-                        setPlanetInfoPos({ x: event.clientX, y: event.clientY });
-                    } else {
-                        setSelectedPlanet(null);
-                    }
-                };
+        renderer.setAnimationLoop(animateLoop);
 
-                renderer.domElement.addEventListener('mousedown', handlePointerStart);
-                renderer.domElement.addEventListener('mousemove', handlePointerMove);
-                renderer.domElement.addEventListener('mouseup', handlePointerEnd);
-                renderer.domElement.addEventListener('click', handleClick);
-                renderer.domElement.addEventListener('wheel', handleWheel, { passive: false });
-                
-                renderer.domElement.addEventListener('touchstart', handlePointerStart, { passive: false });
-                renderer.domElement.addEventListener('touchmove', handlePointerMove, { passive: false });
-                renderer.domElement.addEventListener('touchend', handlePointerEnd, { passive: false });
+        // Input handling: pointer events for drag, pointerup for click/tap; pinch using pointer events
+        let pointers = new Map();
+        let lastPinchDistance = null;
+        let lastTap = null;
 
-                // Animation loop
-                const animate = () => {
-                    const deltaTime = clock.getDelta();
-                    
-                    // Always keep dark background
-                    renderer.setClearColor(0x000011, arActive ? 0 : 1);
-                    
-                    if (!arActive) {
-                        // Update camera based on drag controls
-                        const distance = controls.current.distance;
-                        camera.position.x = distance * Math.sin(controls.current.rotationY) * Math.cos(controls.current.rotationX);
-                        camera.position.y = distance * Math.sin(controls.current.rotationX);
-                        camera.position.z = distance * Math.cos(controls.current.rotationY) * Math.cos(controls.current.rotationX);
-                        camera.lookAt(0, 0, 0);
-                    }
-                    
-                    // Animate sun
-                    if (sunGroup) {
-                        sunGroup.rotation.y += deltaTime * 0.3;
-                    }
-                    
-                    // Animate planets
-                    planets.forEach(({ group, planet }) => {
-                        planet.userData.angle += deltaTime * planet.userData.speed * 0.02;
-                        const distance = planet.userData.distance;
-                        const angle = planet.userData.angle;
-                        
-                        group.position.x = Math.cos(angle) * distance;
-                        group.position.z = Math.sin(angle) * distance;
-                        
-                        // Rotate planets
-                        planet.rotation.y += deltaTime * 0.5;
-                        
-                        // Special rotation for Uranus (tilted)
-                        if (planet.userData.name === 'Uranus') {
-                            group.rotation.z = Math.PI / 2;
-                        }
-                    });
-                    
-                    renderer.render(scene, camera);
-                };
+        function getPointerPos(ev) {
+          if (ev.clientX != null && ev.clientY != null) return { x: ev.clientX, y: ev.clientY };
+          return { x: ev.touches && ev.touches[0] ? ev.touches[0].clientX : 0, y: ev.touches && ev.touches[0] ? ev.touches[0].clientY : 0 };
+        }
 
-                renderer.setAnimationLoop(animate);
+        function computeDistance(p1, p2) {
+          return Math.hypot(p1.x - p2.x, p1.y - p2.y);
+        }
 
-                sceneRef.current = scene;
-                rendererRef.current = renderer;
-                cameraRef.current = camera;
-                planetsRef.current = planets;
-                sunRef.current = sunGroup;
-                clockRef.current = clock;
-                raycasterRef.current = raycaster;
+        function onPointerDown(e) {
+          e.preventDefault();
+          mountRef.current.setPointerCapture && mountRef.current.setPointerCapture(e.pointerId);
+          pointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
+          if (pointers.size === 1) {
+            // start drag
+            controls.current.isDragging = true;
+            controls.current.lastPointerX = e.clientX;
+            controls.current.lastPointerY = e.clientY;
+          } else if (pointers.size === 2) {
+            // start pinch
+            const arr = Array.from(pointers.values());
+            lastPinchDistance = computeDistance(arr[0], arr[1]);
+          }
+          lastTap = { x:e.clientX, y:e.clientY, t: performance.now() };
+        }
 
-                const handleResize = () => {
-                    camera.aspect = window.innerWidth / window.innerHeight;
-                    camera.updateProjectionMatrix();
-                    renderer.setSize(window.innerWidth, window.innerHeight);
-                };
-                window.addEventListener('resize', handleResize);
+        function onPointerMove(e) {
+          if (!pointers.has(e.pointerId)) return;
+          pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
-                return () => {
-                    window.removeEventListener('resize', handleResize);
-                    renderer.setAnimationLoop(null);
-                    if (mountRef.current && renderer.domElement) {
-                        mountRef.current.removeChild(renderer.domElement);
-                    }
-                    renderer.dispose();
-                };
-            }, [arActive]);
+          if (pointers.size === 1 && controls.current.isDragging) {
+            const dx = e.clientX - controls.current.lastPointerX;
+            const dy = e.clientY - controls.current.lastPointerY;
+            controls.current.rotationY += dx * 0.005;
+            controls.current.rotationX += dy * 0.005;
+            controls.current.rotationX = Math.max(-Math.PI/2, Math.min(Math.PI/2, controls.current.rotationX));
+            controls.current.lastPointerX = e.clientX;
+            controls.current.lastPointerY = e.clientY;
+          } else if (pointers.size === 2) {
+            const arr = Array.from(pointers.values());
+            const distNow = computeDistance(arr[0], arr[1]);
+            if (lastPinchDistance && Math.abs(distNow - lastPinchDistance) > 2) {
+              // pinch: zoom
+              const factor = lastPinchDistance / distNow;
+              controls.current.distance *= factor;
+              controls.current.distance = Math.max(2, Math.min(15, controls.current.distance));
+              lastPinchDistance = distNow;
+            }
+          }
+        }
 
-            const startAR = async () => {
-                updateDebug('⚠️ AR disabled due to freezing issues. Working on fix...');
-                // AR temporarily disabled to prevent freezing
-                return;
-            };
+        function onPointerUp(e) {
+          if (pointers.has(e.pointerId)) pointers.delete(e.pointerId);
+          if (pointers.size === 0) {
+            // end drag
+            controls.current.isDragging = false;
+            lastPinchDistance = null;
+            // detect tap (short duration and small movement)
+            const now = performance.now();
+            if (lastTap && (now - lastTap.t) < 300) {
+              const dx = Math.abs((e.clientX || lastTap.x) - lastTap.x);
+              const dy = Math.abs((e.clientY || lastTap.y) - lastTap.y);
+              if (dx < 10 && dy < 10) {
+                // treat as click/tap
+                handlePick(e.clientX || lastTap.x, e.clientY || lastTap.y);
+              }
+            }
+          } else if (pointers.size === 1) {
+            // continue with single pointer as drag
+            const remaining = pointers.values().next().value;
+            controls.current.lastPointerX = remaining.x;
+            controls.current.lastPointerY = remaining.y;
+          }
+        }
 
-            return React.createElement('div', {
-                style: { 
-                    position: 'relative',
-                    width: '100vw', 
-                    height: '100vh',
-                    background: '#000011 !important',
-                    color: 'white',
-                    fontFamily: 'Arial, sans-serif',
-                    overflow: 'hidden'
-                }
-            }, [
-                React.createElement('div', {
-                    key: 'mount',
-                    ref: mountRef,
-                    style: { position: 'absolute', top: 0, left: 0 }
-                }),
-                
-                React.createElement('div', {
-                    key: 'title',
-                    style: {
-                        position: 'absolute',
-                        top: '15px',
-                        left: '15px',
-                        zIndex: 10,
-                        background: 'rgba(0,0,0,0.8)',
-                        padding: '10px 20px',
-                        borderRadius: '10px',
-                        border: '1px solid rgba(255,255,255,0.2)'
-                    }
-                }, [
-                    React.createElement('h2', {
-                        key: 'h2',
-                        style: { 
-                            margin: 0,
-                            fontSize: '1.3em',
-                            background: 'linear-gradient(45deg, #ff6b35, #f7931e)',
-                            WebkitBackgroundClip: 'text',
-                            WebkitTextFillColor: 'transparent'
-                        }
-                    }, '🌞 Enhanced Solar System 3D')
-                ]),
+        function handlePick(clientX, clientY) {
+          const rect = renderer.domElement.getBoundingClientRect();
+          const mouse = {
+            x: ((clientX - rect.left) / rect.width) * 2 - 1,
+            y: -((clientY - rect.top) / rect.height) * 2 + 1
+          };
+          raycaster.setFromCamera(mouse, camera);
+          // check sun first
+          const intersectsSun = raycaster.intersectObject(sunMesh, true);
+          if (intersectsSun.length) {
+            setSelectedPlanet(sunData);
+            setPlanetInfoPos({ x: clientX, y: clientY });
+            return;
+          }
+          // check planets
+          const planetMeshes = planets.map(p => p.mesh);
+          const intersects = raycaster.intersectObjects(planetMeshes, true);
+          if (intersects.length) {
+            const hit = intersects[0].object;
+            setSelectedPlanet(hit.userData);
+            setPlanetInfoPos({ x: clientX, y: clientY });
+          } else {
+            setSelectedPlanet(null);
+          }
+        }
 
-                React.createElement('div', {
-                    key: 'debug',
-                    className: 'debug-info'
-                }, debugInfo),
+        // pointer events binding on renderer.domElement
+        const canvas = renderer.domElement;
+        canvas.style.touchAction = 'none';
+        canvas.addEventListener('pointerdown', onPointerDown, { passive:false });
+        window.addEventListener('pointermove', onPointerMove, { passive:false });
+        window.addEventListener('pointerup', onPointerUp, { passive:false });
+        window.addEventListener('pointercancel', onPointerUp, { passive:false });
 
-                React.createElement('button', {
-                    key: 'ar-btn',
-                    onClick: startAR,
-                    style: {
-                        position: 'absolute',
-                        top: '15px',
-                        right: '15px',
-                        padding: '12px 18px',
-                        fontSize: '1em',
-                        background: 'linear-gradient(45deg, #666, #888)',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '20px',
-                        cursor: 'pointer',
-                        zIndex: 10,
-                        opacity: 0.6
-                    }
-                }, '🔧 AR (Fixing)'),
+        // wheel zoom for desktop
+        function onWheel(e) {
+          e.preventDefault();
+          controls.current.distance += e.deltaY * 0.01;
+          controls.current.distance = Math.max(2, Math.min(15, controls.current.distance));
+        }
+        canvas.addEventListener('wheel', onWheel, { passive:false });
 
-                selectedPlanet && React.createElement('div', {
-                    key: 'planet-info',
-                    className: 'planet-info',
-                    style: {
-                        left: Math.min(planetInfoPos.x, window.innerWidth - 320) + 'px',
-                        top: Math.min(planetInfoPos.y, window.innerHeight - 250) + 'px'
-                    }
-                }, [
-                    React.createElement('button', {
-                        key: 'close',
-                        className: 'close-btn',
-                        onClick: () => setSelectedPlanet(null)
-                    }, '×'),
-                    React.createElement('h3', { key: 'name' }, `🪐 ${selectedPlanet.name}`),
-                    React.createElement('p', { key: 'diameter' }, `📏 ${selectedPlanet.details.diameter}`),
-                    React.createElement('p', { key: 'distance' }, `🚀 ${selectedPlanet.details.distance}`),
-                    React.createElement('p', { key: 'facts', style: { fontStyle: 'italic', color: '#ffa500' } }, selectedPlanet.details.facts)
-                ]),
+        // handle resize & visibility change
+        function onResize() {
+          camera.aspect = window.innerWidth / window.innerHeight;
+          camera.updateProjectionMatrix();
+          renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        window.addEventListener('resize', onResize);
 
-                React.createElement('div', {
-                    key: 'instructions',
-                    style: {
-                        position: 'absolute',
-                        bottom: '15px',
-                        left: '15px',
-                        right: '15px',
-                        background: 'rgba(0,0,0,0.9)',
-                        padding: '10px',
-                        borderRadius: '10px',
-                        textAlign: 'center',
-                        fontSize: '0.9em',
-                        zIndex: 10,
-                        border: '1px solid rgba(255,255,255,0.1)'
-                    }
-                }, '🖱️ Drag to rotate • 🔄 Scroll to zoom • 👆 Click planets for details')
-            ]);
+        function onVisibilityChange() {
+          animationActiveRef.current = document.visibilityState === 'visible';
+          if (animationActiveRef.current) {
+            renderer.setAnimationLoop(animateLoop);
+          } else {
+            renderer.setAnimationLoop(null);
+          }
+        }
+        document.addEventListener('visibilitychange', onVisibilityChange);
+
+        // check AR support early
+        (async function checkAR() {
+          try {
+            if (navigator.xr && navigator.xr.isSessionSupported) {
+              const supported = await navigator.xr.isSessionSupported('immersive-ar');
+              setArSupported(Boolean(supported));
+              updateDebug(supported ? 'WebXR immersive-ar is supported on this device.' : (isIos() ? 'iOS: WebXR immersive-ar not available — Quick Look fallback present' : 'WebXR immersive-ar not supported on this browser.'));
+            } else {
+              setArSupported(false);
+              updateDebug(isIos() ? 'iOS: WebXR not available — Quick Look fallback present' : 'WebXR not available in this browser.');
+            }
+          } catch (err) {
+            setArSupported(false);
+            updateDebug('AR check failed: ' + err.message, true);
+          }
+        })();
+
+        // cleanup function
+        return () => {
+          // stop animation
+          animationActiveRef.current = false;
+          try { renderer.setAnimationLoop(null); } catch(e) {}
+          // remove DOM listeners
+          canvas.removeEventListener('pointerdown', onPointerDown);
+          window.removeEventListener('pointermove', onPointerMove);
+          window.removeEventListener('pointerup', onPointerUp);
+          window.removeEventListener('pointercancel', onPointerUp);
+          canvas.removeEventListener('wheel', onWheel);
+          window.removeEventListener('resize', onResize);
+          document.removeEventListener('visibilitychange', onVisibilityChange);
+
+          // dispose objects
+          scene.traverse(obj => {
+            if (obj.geometry) {
+              try { obj.geometry.dispose(); } catch(e) {}
+            }
+            if (obj.material) {
+              try {
+                if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
+                else obj.material.dispose();
+              } catch(e) {}
+            }
+          });
+          // also dispose tracked textures/materials/geometries if any duplicates missed
+          texturesToDispose.current.forEach(t => { try{ t.dispose(); } catch(e){} });
+          materialsToDispose.current.forEach(m => { try{ m.dispose(); } catch(e){} });
+          geometriesToDispose.current.forEach(g => { try{ g.dispose(); } catch(e){} });
+
+          try {
+            mountRef.current && mountRef.current.removeChild(renderer.domElement);
+          } catch(e){}
+          try { renderer.dispose(); } catch(e){}
         };
+      }, []); // run once
 
-        const { createRoot } = ReactDOM;
-        const root = createRoot(document.getElementById('root'));
-        root.render(React.createElement(SolarSystemAR));
-    </script>
+      // AR start function (WebXR) with basic scaffolding
+      async function startAR() {
+        if (!navigator.xr) {
+          updateDebug('WebXR not available on this device/browser', true);
+          return;
+        }
+        if (!rendererRef.current) { updateDebug('Renderer not ready', true); return; }
+        try {
+          updateDebug('Requesting immersive-ar session...');
+          const session = await navigator.xr.requestSession('immersive-ar', {
+            requiredFeatures: ['local', 'hit-test'],
+            optionalFeatures: ['dom-overlay'],
+            domOverlay: { root: document.body }
+          });
+          await rendererRef.current.xr.setSession(session);
+          setXrSession(session);
+          updateDebug('AR session started');
+          // simple flow: you should implement hit-test + reticle to place scene in the real world.
+          // For now we just set renderer to present and keep camera behavior managed by WebXR
+          session.addEventListener('end', () => { updateDebug('AR session ended'); setXrSession(null); });
+        } catch (err) {
+          updateDebug('Failed to start AR: ' + err.message, true);
+        }
+      }
+
+      // Provide a small UI
+      return React.createElement('div', { ref: mountRef, style:{ width:'100%', height:'100%', position:'relative' } }, [
+        React.createElement('div', { key:'title', className:'title' }, React.createElement('h2', null, '🌞 Enhanced Solar System 3D')),
+        React.createElement('div', { key:'debug', className:'debug-info', style:{ color: debugIsError ? '#ff6b6b' : '#00ff00' } }, debugInfo),
+        React.createElement('button', { key:'arbtn', className:'ar-button', onClick: async () => {
+          if (xrSession) {
+            try { await xrSession.end(); } catch(e){}
+          } else {
+            if (isIos() && !arSupported) {
+              // iOS Quick Look fallback using model-viewer: show message
+              updateDebug('iOS detected — use AR Quick Look via the AR button below (Quick Look will open a USDZ model).');
+              // open a simple usd/ usdz link: for demo, we cannot create USDZ here. So we just show message.
+              return;
+            }
+            await startAR();
+          }
+        } }, xrSession ? 'Exit AR' : '🔧 AR (Try)') ,
+        selectedPlanet && React.createElement('div', {
+          key:'planet-info',
+          className:'planet-info',
+          style:{ left: Math.min(planetInfoPos.x, window.innerWidth - 340) + 'px', top: Math.min(planetInfoPos.y, window.innerHeight - 260) + 'px' }
+        }, [
+          React.createElement('button', { key:'close', className:'close-btn', onClick: () => setSelectedPlanet(null) }, '×'),
+          React.createElement('h3', { key:'h' }, `🪐 ${selectedPlanet.name}`),
+          React.createElement('p', { key:'diam' }, `📏 ${selectedPlanet.details?.diameter || '—'}`),
+          React.createElement('p', { key:'dist' }, `🚀 ${selectedPlanet.details?.distance || selectedPlanet.details?.facts || '—'}`),
+          React.createElement('p', { key:'facts', style:{ fontStyle:'italic', color:'#ffa500' } }, selectedPlanet.details?.facts || '')
+        ]),
+        React.createElement('div', { key:'instr', className:'instructions' }, '🖱️ Drag to rotate • 🔄 Scroll or pinch to zoom • 👆 Tap planets for details'),
+        // model-viewer fallback element example (hidden). In a real app you'd reference a USDZ file here for Quick Look on iOS.
+        React.createElement('model-viewer', { key:'mv', id:'mv', alt:'Solar system (AR fallback)', src:'', iosSrc:'', ar: true, style:{ display:'none' } })
+      ]);
+    }
+
+    // render
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(React.createElement(SolarSystemApp));
+  })();
+  </script>
 </body>
 </html>
