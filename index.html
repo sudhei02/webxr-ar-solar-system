@@ -62,6 +62,7 @@
             font-family: monospace;
             font-size: 12px;
             z-index: 20;
+            max-width: 300px;
         }
     </style>
 </head>
@@ -80,7 +81,6 @@
             const sunRef = useRef(null);
             const clockRef = useRef(null);
             const raycasterRef = useRef(null);
-            const mouseRef = useRef({ x: 0, y: 0 });
             
             const [arSupported, setArSupported] = useState(false);
             const [isChecking, setIsChecking] = useState(true);
@@ -90,11 +90,10 @@
             const [planetInfoPos, setPlanetInfoPos] = useState({ x: 0, y: 0 });
             const [debugInfo, setDebugInfo] = useState('Initializing...');
 
-            // PERFORMANCE FIX 1: Smaller planets, simpler data
             const planetData = [
                 { 
                     name: 'Mercury', 
-                    size: 0.15, // SMALLER than before (was 0.3)
+                    size: 0.15,
                     distance: 0.8, 
                     speed: 0.8, 
                     color: 0x8c7853,
@@ -108,7 +107,7 @@
                 },
                 { 
                     name: 'Venus', 
-                    size: 0.18, // SMALLER
+                    size: 0.18,
                     distance: 1.1, 
                     speed: 0.6, 
                     color: 0xffc649,
@@ -122,7 +121,7 @@
                 },
                 { 
                     name: 'Earth', 
-                    size: 0.18, // SMALLER
+                    size: 0.18,
                     distance: 1.4, 
                     speed: 0.5, 
                     color: 0x6b93d6,
@@ -136,7 +135,7 @@
                 },
                 { 
                     name: 'Mars', 
-                    size: 0.14, // SMALLER
+                    size: 0.14,
                     distance: 1.8, 
                     speed: 0.4, 
                     color: 0xc1440e,
@@ -150,7 +149,7 @@
                 },
                 { 
                     name: 'Jupiter', 
-                    size: 0.4, // MUCH SMALLER (was 0.8)
+                    size: 0.4,
                     distance: 2.5, 
                     speed: 0.25, 
                     color: 0xd8ca9d,
@@ -164,7 +163,7 @@
                 },
                 { 
                     name: 'Saturn', 
-                    size: 0.35, // SMALLER
+                    size: 0.35,
                     distance: 3.2, 
                     speed: 0.2, 
                     color: 0xfad5a5,
@@ -178,7 +177,6 @@
                 }
             ];
 
-            // Sun data for details
             const sunData = {
                 name: 'The Sun',
                 details: {
@@ -191,23 +189,22 @@
                 }
             };
 
-            // Camera controls state
-            const cameraControls = useRef({
-                isDown: false,
+            // DRAG CONTROLS - Simple mouse/touch drag to orbit
+            const controls = useRef({
+                isDragging: false,
                 startX: 0,
                 startY: 0,
                 rotationX: 0,
                 rotationY: 0,
-                zoom: 8
+                distance: 8
             });
 
-            // PERFORMANCE FIX 2: Add debug logging
             const updateDebug = (message) => {
                 console.log('AR Debug:', message);
                 setDebugInfo(message);
             };
 
-            // Check AR support with better logging
+            // Check AR support
             useEffect(() => {
                 const checkARSupport = async () => {
                     updateDebug('Checking WebXR support...');
@@ -233,11 +230,8 @@
                 checkARSupport();
             }, []);
 
-            // PERFORMANCE FIX 3: Much simpler planet material
             const createSimplePlanetMaterial = (planetInfo) => {
                 const THREE = window.THREE;
-                
-                // Just use basic color, no complex textures
                 return new THREE.MeshPhongMaterial({ 
                     color: planetInfo.color,
                     shininess: 10
@@ -256,48 +250,46 @@
                 const scene = new THREE.Scene();
                 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
                 const renderer = new THREE.WebGLRenderer({ 
-                    antialias: false, // PERFORMANCE FIX: disable antialiasing
+                    antialias: false,
                     alpha: true,
                     preserveDrawingBuffer: true,
-                    powerPreference: "high-performance" // PERFORMANCE FIX: request high performance
+                    powerPreference: "high-performance"
                 });
                 const raycaster = new THREE.Raycaster();
                 
                 renderer.setSize(window.innerWidth, window.innerHeight);
                 renderer.setClearColor(0x000011, 1);
                 renderer.xr.enabled = true;
-                renderer.shadowMap.enabled = false; // PERFORMANCE FIX: disable shadows
+                renderer.shadowMap.enabled = false;
                 mountRef.current.appendChild(renderer.domElement);
 
-                // PERFORMANCE FIX 4: Much fewer stars (was 15,000, now 1,000)
+                // Stars
                 const starGeometry = new THREE.BufferGeometry();
                 const starMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 1 });
                 const starVertices = [];
-                for (let i = 0; i < 1000; i++) { // MUCH FEWER STARS
-                    starVertices.push((Math.random() - 0.5) * 1000); // SMALLER RANGE
+                for (let i = 0; i < 1000; i++) {
+                    starVertices.push((Math.random() - 0.5) * 1000);
                     starVertices.push((Math.random() - 0.5) * 1000);
                     starVertices.push((Math.random() - 0.5) * 1000);
                 }
                 starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starVertices, 3));
                 scene.add(new THREE.Points(starGeometry, starMaterial));
 
-                // Position camera
+                // Initial camera position
                 camera.position.set(0, 2, 8);
                 camera.lookAt(0, 0, 0);
 
                 const clock = new THREE.Clock();
 
-                // Simpler lighting
+                // Lighting
                 const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
                 scene.add(ambientLight);
                 const sunLight = new THREE.PointLight(0xffffff, 1, 50);
                 scene.add(sunLight);
 
-                // PERFORMANCE FIX 5: Much simpler sun
+                // Sun
                 const sunGroup = new THREE.Group();
-                
-                // Simple sun with basic material
-                const sunGeometry = new THREE.SphereGeometry(0.3, 16, 16); // FEWER SEGMENTS (was 64,64)
+                const sunGeometry = new THREE.SphereGeometry(0.3, 16, 16);
                 const sunMaterial = new THREE.MeshBasicMaterial({ 
                     color: 0xffaa00,
                     emissive: 0xffaa00,
@@ -309,10 +301,10 @@
                 sunGroup.add(sun);
                 scene.add(sunGroup);
 
-                // PERFORMANCE FIX 6: Simpler planets with fewer segments
+                // Planets
                 const planets = [];
                 planetData.forEach((planetInfo) => {
-                    const geometry = new THREE.SphereGeometry(planetInfo.size, 16, 16); // FEWER SEGMENTS (was 32,32)
+                    const geometry = new THREE.SphereGeometry(planetInfo.size, 16, 16);
                     const material = createSimplePlanetMaterial(planetInfo);
                     const planet = new THREE.Mesh(geometry, material);
                     
@@ -329,11 +321,56 @@
                     planets.push(planet);
                 });
 
-                updateDebug('Scene created successfully');
+                updateDebug('Scene created. Drag to rotate!');
 
-                // Mouse and touch event handlers (simplified)
-                const handleClick = (event) => {
+                // DRAG CONTROL EVENTS
+                const handlePointerStart = (event) => {
                     if (arActive) return;
+                    
+                    event.preventDefault();
+                    controls.current.isDragging = true;
+                    
+                    const clientX = event.touches ? event.touches[0].clientX : event.clientX;
+                    const clientY = event.touches ? event.touches[0].clientY : event.clientY;
+                    
+                    controls.current.startX = clientX;
+                    controls.current.startY = clientY;
+                };
+
+                const handlePointerMove = (event) => {
+                    if (arActive || !controls.current.isDragging) return;
+                    
+                    event.preventDefault();
+                    const clientX = event.touches ? event.touches[0].clientX : event.clientX;
+                    const clientY = event.touches ? event.touches[0].clientY : event.clientY;
+                    
+                    const deltaX = clientX - controls.current.startX;
+                    const deltaY = clientY - controls.current.startY;
+                    
+                    controls.current.rotationY += deltaX * 0.01;
+                    controls.current.rotationX += deltaY * 0.01;
+                    
+                    // Limit vertical rotation
+                    controls.current.rotationX = Math.max(-Math.PI/2, Math.min(Math.PI/2, controls.current.rotationX));
+                    
+                    controls.current.startX = clientX;
+                    controls.current.startY = clientY;
+                };
+
+                const handlePointerEnd = (event) => {
+                    controls.current.isDragging = false;
+                };
+
+                const handleWheel = (event) => {
+                    if (arActive) return;
+                    
+                    event.preventDefault();
+                    controls.current.distance += event.deltaY * 0.01;
+                    controls.current.distance = Math.max(2, Math.min(20, controls.current.distance));
+                };
+
+                const handleClick = (event) => {
+                    if (arActive || controls.current.isDragging) return;
                     
                     const rect = renderer.domElement.getBoundingClientRect();
                     const mouse = {
@@ -360,31 +397,40 @@
                     }
                 };
 
+                // Add all event listeners
+                renderer.domElement.addEventListener('mousedown', handlePointerStart);
+                renderer.domElement.addEventListener('mousemove', handlePointerMove);
+                renderer.domElement.addEventListener('mouseup', handlePointerEnd);
                 renderer.domElement.addEventListener('click', handleClick);
+                renderer.domElement.addEventListener('wheel', handleWheel, { passive: false });
+                
+                renderer.domElement.addEventListener('touchstart', handlePointerStart, { passive: false });
+                renderer.domElement.addEventListener('touchmove', handlePointerMove, { passive: false });
+                renderer.domElement.addEventListener('touchend', handlePointerEnd, { passive: false });
 
-                // PERFORMANCE FIX 7: Simpler animation loop
+                // Animation loop
                 const animate = () => {
                     const deltaTime = clock.getDelta();
                     
-                    // Handle AR vs normal rendering
                     if (arActive) {
                         renderer.setClearColor(0x000000, 0);
                     } else {
                         renderer.setClearColor(0x000011, 1);
                         
-                        // Simple camera orbit
-                        const time = clock.getElapsedTime();
-                        camera.position.x = Math.cos(time * 0.1) * 8;
-                        camera.position.z = Math.sin(time * 0.1) * 8;
+                        // UPDATE CAMERA BASED ON DRAG CONTROLS
+                        const distance = controls.current.distance;
+                        camera.position.x = distance * Math.sin(controls.current.rotationY) * Math.cos(controls.current.rotationX);
+                        camera.position.y = distance * Math.sin(controls.current.rotationX);
+                        camera.position.z = distance * Math.cos(controls.current.rotationY) * Math.cos(controls.current.rotationX);
                         camera.lookAt(0, 0, 0);
                     }
                     
-                    // Simple sun rotation
+                    // Animate sun
                     if (sunGroup) {
                         sunGroup.rotation.y += deltaTime * 0.5;
                     }
                     
-                    // Simple planet animation
+                    // Animate planets
                     planets.forEach(planet => {
                         planet.userData.angle += deltaTime * planet.userData.speed * 0.02;
                         const distance = planet.userData.distance;
@@ -426,6 +472,25 @@
                 };
             }, [arActive]);
 
+            // TIMEOUT WRAPPER FOR AR SESSION
+            const requestSessionWithTimeout = (sessionMode, options = {}) => {
+                return new Promise((resolve, reject) => {
+                    const timeout = setTimeout(() => {
+                        reject(new Error('AR session request timed out after 10 seconds'));
+                    }, 10000); // 10 second timeout
+                    
+                    navigator.xr.requestSession(sessionMode, options)
+                        .then(session => {
+                            clearTimeout(timeout);
+                            resolve(session);
+                        })
+                        .catch(error => {
+                            clearTimeout(timeout);
+                            reject(error);
+                        });
+                });
+            };
+
             const startAR = async () => {
                 if (!rendererRef.current) {
                     updateDebug('❌ Renderer not ready');
@@ -433,25 +498,38 @@
                 }
                 
                 if (!arSupported) {
+                    updateDebug('❌ AR not supported on this device');
                     alert('AR not supported. Need Chrome Android or Safari iOS 15.4+');
                     return;
                 }
 
                 try {
-                    updateDebug('🚀 Requesting AR session...');
+                    updateDebug('🚀 Requesting AR session (with timeout)...');
                     
-                    // PERFORMANCE FIX 8: Request session with minimal features
-                    const session = await navigator.xr.requestSession('immersive-ar', {
-                        requiredFeatures: []
-                    });
+                    // Try different AR session types with timeout
+                    let session;
+                    try {
+                        // Try immersive AR first
+                        session = await requestSessionWithTimeout('immersive-ar');
+                        updateDebug('✅ Immersive AR session created');
+                    } catch (error) {
+                        updateDebug(`❌ Immersive AR failed: ${error.message}`);
+                        updateDebug('🔄 Trying inline AR...');
+                        
+                        // Fallback to inline AR
+                        try {
+                            session = await requestSessionWithTimeout('inline');
+                            updateDebug('✅ Inline AR session created');
+                        } catch (inlineError) {
+                            throw new Error(`Both AR modes failed. Immersive: ${error.message}, Inline: ${inlineError.message}`);
+                        }
+                    }
                     
-                    updateDebug('✅ AR session created');
-
-                    // PERFORMANCE FIX 9: Proper renderer setup for AR
+                    updateDebug('⚙️ Setting up renderer...');
                     await rendererRef.current.xr.setSession(session);
-                    updateDebug('✅ Renderer session set');
+                    updateDebug('✅ Renderer setup complete');
 
-                    // Scale down everything for AR
+                    // Scale down for AR
                     if (sunRef.current) {
                         sunRef.current.position.set(0, 0, -1);
                         sunRef.current.scale.setScalar(0.3);
@@ -468,7 +546,7 @@
 
                     setXrSession(session);
                     setArActive(true);
-                    updateDebug('✅ AR mode active');
+                    updateDebug('✅ AR active! Look around!');
 
                     session.addEventListener('end', () => {
                         updateDebug('AR session ended');
@@ -490,12 +568,21 @@
 
                         setArActive(false);
                         setXrSession(null);
+                        updateDebug('Back to 3D mode - drag to explore!');
                     });
 
                 } catch (error) {
-                    updateDebug(`❌ AR failed: ${error.message}`);
+                    updateDebug(`❌ AR completely failed: ${error.message}`);
                     console.error('Full AR Error:', error);
-                    alert(`AR failed: ${error.message}`);
+                    
+                    // Show user-friendly message
+                    if (error.message.includes('timeout')) {
+                        alert('AR timed out. Your browser might not support AR properly. Try Chrome Android or newer Safari iOS.');
+                    } else if (error.message.includes('Permission')) {
+                        alert('Camera permission needed for AR. Please allow camera access and try again.');
+                    } else {
+                        alert(`AR failed: ${error.message.substring(0, 100)}...`);
+                    }
                 }
             };
 
@@ -540,7 +627,7 @@
                             WebkitBackgroundClip: 'text',
                             WebkitTextFillColor: 'transparent'
                         }
-                    }, `🌞 Solar System ${arActive ? 'AR' : '3D'} - LITE`)
+                    }, `🌞 Solar System ${arActive ? 'AR' : '3D'}`)
                 ]),
 
                 // Debug Info
@@ -588,7 +675,27 @@
                     React.createElement('p', { key: 'diameter' }, `📏 Diameter: ${selectedPlanet.details.diameter}`),
                     React.createElement('p', { key: 'distance' }, `🚀 Distance: ${selectedPlanet.details.distance}`),
                     React.createElement('p', { key: 'facts', style: { fontStyle: 'italic', color: '#ffa500' } }, selectedPlanet.details.facts)
-                ])
+                ]),
+
+                // Bottom instructions
+                React.createElement('div', {
+                    key: 'instructions',
+                    style: {
+                        position: 'absolute',
+                        bottom: '15px',
+                        left: '15px',
+                        right: '15px',
+                        background: 'rgba(0,0,0,0.8)',
+                        padding: '10px',
+                        borderRadius: '10px',
+                        textAlign: 'center',
+                        fontSize: '0.9em',
+                        zIndex: 10
+                    }
+                }, arActive ? 
+                    '📱 Move your phone to explore AR!' : 
+                    '🖱️ Drag to rotate • 🔄 Scroll to zoom • 👆 Click planets for info'
+                )
             ]);
         };
 
