@@ -465,42 +465,114 @@
         
         // Start AR session with proper iOS handling
         async function startAR() {
-            if (isIOS) {
-                // Show permission modal for iOS
+            // For XR Browser, try direct initialization first
+            if (isXRBrowser) {
+                showStatus('Starting AR directly for XR Browser...', 'normal');
+                try {
+                    // Try direct AR initialization without permission modal
+                    await initializeARDirect();
+                } catch (error) {
+                    console.log('Direct AR failed, trying with permissions:', error);
+                    // Fall back to permission flow
+                    if (isIOS) {
+                        document.getElementById('permission-modal').classList.add('active');
+                    } else {
+                        await initializeAR();
+                    }
+                }
+            } else if (isIOS) {
+                // Show permission modal for iOS Safari/other browsers
                 document.getElementById('permission-modal').classList.add('active');
             } else {
                 await initializeAR();
             }
         }
         
-        // Request iOS permissions
+        // Direct AR initialization for XR Browser
+        async function initializeARDirect() {
+            try {
+                // Request minimal session first
+                const testSession = await navigator.xr.requestSession('immersive-ar', {
+                    optionalFeatures: ['dom-overlay'],
+                    domOverlay: { root: document.body }
+                });
+                
+                // If we get here, permissions are OK
+                await testSession.end();
+                
+                // Now start the real session
+                await initializeAR();
+            } catch (error) {
+                throw error;
+            }
+        }
+        
+        // Request iOS permissions with better handling
         async function requestPermissions() {
             document.getElementById('permission-modal').classList.remove('active');
             showStatus('Requesting permissions...', 'normal');
             
             try {
+                // For iOS 13+, request device orientation permission first
+                if (typeof DeviceOrientationEvent !== 'undefined' && 
+                    typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    try {
+                        const orientationPermission = await DeviceOrientationEvent.requestPermission();
+                        console.log('Orientation permission:', orientationPermission);
+                    } catch (e) {
+                        console.log('Orientation permission failed:', e);
+                    }
+                }
+                
                 // Request device motion permission for iOS 13+
                 if (typeof DeviceMotionEvent !== 'undefined' && 
                     typeof DeviceMotionEvent.requestPermission === 'function') {
                     const motionPermission = await DeviceMotionEvent.requestPermission();
+                    console.log('Motion permission:', motionPermission);
                     if (motionPermission !== 'granted') {
-                        throw new Error('Motion permission denied');
+                        throw new Error('Motion permission denied. Please go to Settings > XR Browser and enable Motion & Fitness.');
                     }
                 }
                 
-                // Request camera permission
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'environment' }
-                });
-                // Stop the stream immediately - we just needed permission
-                stream.getTracks().forEach(track => track.stop());
+                // Request camera permission with better error handling
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        video: { 
+                            facingMode: 'environment',
+                            width: { ideal: 1280 },
+                            height: { ideal: 720 }
+                        },
+                        audio: false
+                    });
+                    // Stop the stream immediately - we just needed permission
+                    stream.getTracks().forEach(track => track.stop());
+                    console.log('Camera permission granted');
+                } catch (cameraError) {
+                    if (cameraError.name === 'NotAllowedError') {
+                        throw new Error('Camera permission denied. Please go to Settings > XR Browser and enable Camera access.');
+                    } else if (cameraError.name === 'NotFoundError') {
+                        throw new Error('No camera found on device.');
+                    } else {
+                        throw new Error(`Camera error: ${cameraError.message}`);
+                    }
+                }
+                
+                // Small delay to ensure permissions are registered
+                await new Promise(resolve => setTimeout(resolve, 500));
                 
                 // Now initialize AR
                 await initializeAR();
                 
             } catch (error) {
                 console.error('Permission error:', error);
-                showStatus('Permissions denied. AR cannot start.', 'error');
+                showStatus(error.message || 'Permissions denied. AR cannot start.', 'error');
+                
+                // Show additional help for iOS users
+                if (isIOS) {
+                    setTimeout(() => {
+                        showStatus('Tip: Go to Settings > XR Browser and check all permissions are enabled', 'normal');
+                    }, 3500);
+                }
             }
         }
         
